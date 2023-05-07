@@ -1,11 +1,10 @@
 import numpy as np
 import pyaudio
-import pyglet
-from pyglet import shapes, clock
 from pynput.keyboard import Key, Controller
 
-WINDOW_WIDTH = 600
-WINDOW_HEIGHT = 800
+# For universal usage, not bound to pyglet window
+# Same code though as in whistle-input.py
+
 CHUNK_SIZE = 1024  # Number of frames per buffer, *3 for detection of half tones
 RATE = 44100  # Sampling rate (Hz)
 CHANNELS = 1
@@ -84,50 +83,9 @@ class Interactor:
             self.check_input()
             self.input_freq.clear() # after check, list gets cleared for new input
 
-# holds the pyglet items
-class Menu():
-
-    def __init__(self):
-        self.color_unselected = (0,240,0,255) # green
-        self.color_selected = (255,0,0,255) # red
-        self.menu_item_width = 400
-        self.menu_item_height = 200
-        self.menu_items = [pyglet.shapes.Rectangle(x=10, y=10, width=self.menu_item_width, height=self.menu_item_height, color=self.color_selected),
-                           pyglet.shapes.Rectangle(x=10, y=300, width=self.menu_item_width, height=self.menu_item_height, color=self.color_unselected),
-                           pyglet.shapes.Rectangle(x=10, y=590, width=self.menu_item_width, height=self.menu_item_height, color=self.color_unselected)]
-        self.selected_item = 0 # bottom one
-
-    def draw_menu(self):
-        for item in self.menu_items:
-            item.draw()
-
-    def reset_colors(self):
-        for item in self.menu_items:
-            item.color = self.color_unselected
-    
-    # visually sets the menu item as marked/selected
-    def update_menu(self, direction: int):
-        if self.selected_item + direction < len(self.menu_items) and self.selected_item + direction >= 0: # index must stay in boundaries of list-items
-            self.selected_item += direction 
-            self.reset_colors()
-            self.menu_items[self.selected_item].color = self.color_selected
 
 interactor = Interactor()
-window = pyglet.window.Window(WINDOW_WIDTH,WINDOW_HEIGHT)
-menu = Menu()
 
-@window.event
-def on_key_press(symbol, modifier):         
-    if symbol == pyglet.window.key.UP:
-        menu.update_menu(1) # upwards direction
-    elif symbol == pyglet.window.key.DOWN:
-        menu.update_menu(-1) # downwards direction
-
-@window.event 
-def on_draw():
-    window.clear()
-    menu.draw_menu()
+while (True):
     interactor.get_audio()
 
-
-pyglet.app.run()
