@@ -10,95 +10,122 @@ WINDOW_WIDTH = 600
 WINDOW_HEIGHT = 600
 CHUNK_SIZE = 1024 * 3  # Number of frames per buffer, * 3 for detecting more differences
 RATE = 44100  # Sampling rate in Hz
+CHANNELS = 1
+FORMAT = pyaudio.paInt16  # Audio format
 THRESHOLD = 100 # for preventing silent fft chaos
-# Celine Dion, my love.
+
+# rough midi file shortly made with bandlab, Song: My heart will go on - Celine Dion | Titanic-theme-song
 MIDI_FILE_PATH = os.path.normpath('assets/titanic.mid')
+
 # from https://pixabay.com/de/illustrations/eis-schnee-hintergrund-wallpaper-2065622/
 BACKGROUND_IMAGE_PATH = os.path.normpath('assets/background.png')
-PLAYER_IMAGE_PATH = os.path.normpath('assets/player.png')
 
-#TEST_PATH = path.join(path.dirname(__file__), 'titanic.mid')
-#print(TEST_PATH)
+midi = MidiFile(MIDI_FILE_PATH)
 
-window = pyglet.window.Window(WINDOW_WIDTH,WINDOW_HEIGHT)
-midi = MidiFile('./assets/titanic.mid')
-background = pyglet.image.load(BACKGROUND_IMAGE_PATH)
-
+# holds mido-code and creates the visual note-blocks
 class NoteManager:
-    
-    notes_midi = []
-    note_blocks = []
-    current_time = 0
-    game_finished = False
 
     def __init__(self, midi_file: MidiFile):
-        self.midi_file = midi_file
-        self.audio = pyaudio.PyAudio()
-        self.stream = self.audio.open(format=pyaudio.paInt16, channels=1,
-                    rate=RATE, input=True,
-                    frames_per_buffer=CHUNK_SIZE)
-        self.current_time_midi = 0
-        for msg in midi_file:
-            self.current_time_midi += msg.time
-            if msg.type == 'note_on' and msg.velocity > 0:
-                note = msg.note
-                duration_note = msg.time
-                duration = self.current_time_midi
-                NoteManager.notes_midi.append((note, duration, duration_note))
-                
-    def get_frequency(note: int): # from https://gist.github.com/YuxiUx/ef84328d95b10d0fcbf537de77b936cd
+        self.midi_file = midi_file 
+        self.notes_midi = [] # midi information
+        self.note_blocks = [] # visual notes
+        self.current_time = 0
+        self.game_finished = False
+        self.current_time_midi = 0 # for counting midi time
+        
+    def start_midi(self):
+        # mido documentation
+        for msg in self.midi_file:
+            self.current_time_midi += msg.time 
+            if msg.type == 'note_on': # note_on = note starts playing in midi
+                note = msg.note # midi-note 
+                duration_note = msg.time # how long note is being played
+                duration = self.current_time_midi # real time notes
+                self.notes_midi.append((note, duration, duration_note))
+
+    def get_frequency(self, note: int): 
+        # from https://gist.github.com/YuxiUx/ef84328d95b10d0fcbf537de77b936cd
         a = 440
         return (a/32) * (2** ((note -9) /12))
 
-    def check_notes(dt):
-        #print(NoteManager.current_time)
-        NoteManager.current_time += dt
-        for note in NoteManager.notes_midi:
-            if NoteManager.current_time >= note[1]:
-                frequency = NoteManager.get_frequency(note[0])
+    # creates the visual block shapes with the time notes are played in midi file
+    def check_notes(self, dt):
+        self.current_time += dt # every 0.1s
+        for note in self.notes_midi:
+            # if it's time to play the note
+            # creates the shape and sets the height to the frequency
+            if self.current_time >= note[1]:
+                frequency = self.get_frequency(note[0])
                 block = pyglet.shapes.Rectangle(x=WINDOW_WIDTH, y=frequency, width=40, height= 20, color=(37, 65, 178))
-                NoteManager.note_blocks.append(block)
-                NoteManager.notes_midi.remove(note)
-        last_note = NoteManager.note_blocks[len(NoteManager.note_blocks)-1]
+                self.note_blocks.append(block) # visual block list
+                self.notes_midi.remove(note) # midi note list for creation
+        last_note = self.note_blocks[len(self.note_blocks)-1] # gets the last midi-note
+        # game ends as soon as the last note block disappears to the left
         if last_note.x + last_note.width < 0:
-            if not NoteManager.game_finished and len(NoteManager.notes_midi) == 0:
-                NoteManager.game_finished = True
+            if not self.game_finished and len(self.notes_midi) == 0:
+                self.game_finished = True
 
-    def update_blocks():
-        for block in NoteManager.note_blocks:
+    # constant movement of blocks to the left
+    def update_blocks(self):
+        for block in self.note_blocks:
             block.x -= 10
             block.draw()
 
-    def draw_blocks():
-        for block in NoteManager.note_blocks:
+    def draw_blocks(self):
+        for block in self.note_blocks:
             block.draw()
 
+# holds the pyaudio code and frequency analysis
+class InputManager: 
+    def __init__(self):
+        self.threshold_exceeded = False
+        self.p = pyaudio.PyAudio()
+        self.stream = self.setup_stream(self.p)
+
+    # opportunity to select input device and opens the input stream
+    def setup_stream(self, p: pyaudio):
+        info = p.get_host_api_info_by_index(0)
+        numdevices = info.get('deviceCount')
+
+        for i in range(0, numdevices):
+            if (p.get_device_info_by_host_api_device_index(0, i).get('maxInputChannels')) > 0:
+                print("Input Device id ", i, " - ", p.get_device_info_by_host_api_device_index(0, i).get('name'))
+
+        print('select audio device:')
+        input_device = int(input())
+
+        return p.open(format=FORMAT, channels=CHANNELS,
+                                rate=RATE, input=True,
+                                frames_per_buffer=CHUNK_SIZE,
+                                input_device_index=input_device)
+            
+    # analyses the frequencies and returns most common
+    def get_freq(self):
+        data = self.stream.read(CHUNK_SIZE)
+        audio_data = np.frombuffer(data, dtype=np.int16)
+        
+        # to prevent random, not wanted input 
+        if np.max(np.abs(audio_data)) > THRESHOLD:
+            fft_data = np.abs(np.fft.fft(audio_data)) # FFT
+            # why I thought I should use this that way:
+            # https://stackoverflow.com/questions/59979354/what-is-the-difference-between-numpy-fft-fft-and-numpy-fft-fftfreq
+            frequency_bins = np.fft.fftfreq(len(fft_data), d=1/RATE) # sorts the frequencies in list/bins
+            major_frequency = np.abs(frequency_bins[np.argmax(fft_data)]) # gets the most common frequency out of input
+            return major_frequency
+        return 0
+                  
+# holds the playbale shape
 class Player:
 
-    data = []
-    stream = None
-
     def __init__(self):
-        audio = pyaudio.PyAudio()
-        Player.stream = audio.open(format=pyaudio.paInt16, channels=1,
-                    rate=RATE, input=True,
-                    frames_per_buffer=CHUNK_SIZE)
+        #self.data = []
         self.shape = pyglet.shapes.Rectangle(x=10, y=0, width=20, height=20, color=(232, 98, 82))
-        #self.shape.opacity = 0
 
-    def updatePlayer(self):
-        Player.data = Player.stream.read(CHUNK_SIZE)
-        audio_data = np.frombuffer(Player.data, dtype=np.int16)
-    
-        if np.max(np.abs(audio_data)) > THRESHOLD:
-            #print(frequencie)
-            fft_data = np.abs(np.fft.fft(audio_data))
-        # same as (np.argmax(fft_data)/CHUNK * SAMPLE
-            frequency_bins = np.fft.fftfreq(len(fft_data), d=1/RATE)
-            major_frequency = np.abs(frequency_bins[np.argmax(fft_data)])
-            #print(major_frequency)
-            if major_frequency <= 600 - self.shape.height:
-                self.shape.y = major_frequency
+    def updatePlayer(self): 
+        frequency = inputmanager.get_freq()  
+        if frequency != 0:     
+            if frequency <= 600 - self.shape.height:
+                self.shape.y = frequency
             else:
                 self.shape.y = WINDOW_HEIGHT - self.shape.height - ui.border_width
         else:
@@ -108,7 +135,7 @@ class Player:
 
     def get_collision_code(self):
         nice_factor = 15 # you don't have to hit the correct note, because chunk
-        for block in NoteManager.note_blocks:
+        for block in notemanager.note_blocks:
             hit_frequency = (self.shape.y > block.y - nice_factor and 
                 self.shape.y + self.shape.height < block.y + block.height + nice_factor)
             if (hit_frequency and 
@@ -125,7 +152,6 @@ class Player:
 
     def draw(self):
         self.shape.draw()
-
 
 class UI:
 
@@ -174,9 +200,9 @@ class UI:
         #self.feeback.draw()
     
     def draw_end_menu(self):
-        if self.score >= 1500:
+        if self.score >= 1300:
             self.final_feedback_label.text = 'Wonderful <3'
-        elif self.score < 1500 and self.score >= 500:
+        elif self.score < 1300 and self.score >= 500:
             self.final_feedback_label.text = 'That\'s okay'
         else:
             self.final_feedback_label.text = 'Uff, let\'s not talk about it'
@@ -197,9 +223,12 @@ class UI:
     def draw_border(self):
         for border in self.borders:
             border.draw()
-        
 
+inputmanager = InputManager()
+window = pyglet.window.Window(WINDOW_WIDTH,WINDOW_HEIGHT)
+background = pyglet.image.load(BACKGROUND_IMAGE_PATH)
 player = Player()
+notemanager = NoteManager(midi)
 ui = UI()
 
 def check_collisions():
@@ -211,28 +240,28 @@ def check_collisions():
         ui.draw_bad_feedback()
 
 @window.event
-def on_show():
-    NoteManager(midi)
-
-@window.event
 def on_key_press(symbol, modifier):         
     if symbol == pyglet.window.key.ESCAPE:
             sys.exit(0)
 
 @window.event
+def on_show():
+    notemanager.start_midi()
+
+@window.event
 def on_draw():
     window.clear()
     background.blit(0,0)   
-    if not NoteManager.game_finished:
+    if not notemanager.game_finished:
         player.updatePlayer()
         check_collisions()
-        NoteManager.update_blocks()
+        notemanager.update_blocks()
         player.draw()
         ui.draw_ui()
     else:
         ui.draw_end_menu()
     ui.draw_border()
 
-clock.schedule_interval(NoteManager.check_notes, 0.1)   
+clock.schedule_interval(notemanager.check_notes, 0.1)   
 
 pyglet.app.run()
