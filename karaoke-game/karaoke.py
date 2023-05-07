@@ -32,6 +32,15 @@ class NoteManager:
         self.current_time = 0
         self.game_finished = False
         self.current_time_midi = 0 # for counting midi time
+
+    # resets all variables
+    def restart(self):
+        self.note_blocks.clear()
+        self.notes_midi.clear()
+        self.current_time = 0
+        self.current_time_midi = 0
+        self.game_finished = False
+        self.start_midi()
         
     def start_midi(self):
         # mido documentation
@@ -59,11 +68,12 @@ class NoteManager:
                 block = pyglet.shapes.Rectangle(x=WINDOW_WIDTH, y=frequency, width=40, height= 20, color=(37, 65, 178))
                 self.note_blocks.append(block) # visual block list
                 self.notes_midi.remove(note) # midi note list for creation
-        last_note = self.note_blocks[len(self.note_blocks)-1] # gets the last midi-note
-        # game ends as soon as the last note block disappears to the left
-        if last_note.x + last_note.width < 0:
-            if not self.game_finished and len(self.notes_midi) == 0:
-                self.game_finished = True
+        if len(self.note_blocks) > 0:
+            last_note = self.note_blocks[len(self.note_blocks)-1] # gets the last midi-note
+            # game ends as soon as the last note block disappears to the left
+            if last_note.x + last_note.width < 0:
+                if not self.game_finished and len(self.notes_midi) == 0:
+                    self.game_finished = True
 
     # constant movement of blocks to the left
     def update_blocks(self):
@@ -118,34 +128,33 @@ class InputManager:
 class Player:
 
     def __init__(self):
-        #self.data = []
         self.shape = pyglet.shapes.Rectangle(x=10, y=0, width=20, height=20, color=(232, 98, 82))
 
     def updatePlayer(self): 
-        frequency = inputmanager.get_freq()  
+        frequency = inputmanager.get_freq()  # gets frequency from input
         if frequency != 0:     
+            # for not losing the shape outside the window
             if frequency <= 600 - self.shape.height:
-                self.shape.y = frequency
+                self.shape.y = frequency # y axis = frequency
             else:
                 self.shape.y = WINDOW_HEIGHT - self.shape.height - ui.border_width
         else:
+            # no input above trehshold -> shape will come back to 0 on y-axis
             if self.shape.y > ui.border_width:
                 self.shape.y -= 10
             else: self.shape.y = ui.border_width
 
+    # checks the collison between player and note blocks
     def get_collision_code(self):
-        nice_factor = 15 # you don't have to hit the correct note, because chunk
+        nice_factor = 15 # you don't have to hit the correct note, because nobody can sing like celine dion
         for block in notemanager.note_blocks:
             hit_frequency = (self.shape.y > block.y - nice_factor and 
-                self.shape.y + self.shape.height < block.y + block.height + nice_factor)
+                self.shape.y + self.shape.height < block.y + block.height + nice_factor) # y-axis position
             if (hit_frequency and 
-                self.shape.x > block.x and self.shape.x < block.x + block.width):
-                # TODO give points
-                #enu.update_score()
-                #print("yas")
+                self.shape.x > block.x and self.shape.x < block.x + block.width): # note hit
                 return 'hit'
             elif (not hit_frequency and 
-                self.shape.x > block.x and self.shape.x < block.x + block.width):
+                self.shape.x > block.x and self.shape.x < block.x + block.width): # note miss
                 #print("nopes")
                 return 'miss'
         return ''
@@ -153,10 +162,11 @@ class Player:
     def draw(self):
         self.shape.draw()
 
+# holds the menu / UI
 class UI:
 
     def __init__(self):
-        self.color = (232, 98, 82, 255)
+        self.color = (232, 98, 82, 255) # orange
         self.score_label = pyglet.text.Label('Score: 0', font_name="Times New Roman",
                                        font_size= 20, x= 20, y=WINDOW_HEIGHT-40,color=self.color)
         self.score = 0
@@ -170,7 +180,7 @@ class UI:
         self.final_feedback_label = pyglet.text.Label('', font_name="Times New Roman",
                                        font_size= 20, x= WINDOW_WIDTH / 2, y=WINDOW_HEIGHT / 2,
                                        anchor_x='center',color=self.color)
-        self.final_menu_label = pyglet.text.Label('ESCAPE for exit', font_name="Times New Roman",
+        self.final_menu_label = pyglet.text.Label('ESCAPE for exit, R for restart', font_name="Times New Roman",
                                        font_size= 15, x= WINDOW_WIDTH / 2, y=WINDOW_HEIGHT / 2 - 100,
                                        anchor_x='center',color=self.color)
         self.start_menu_label = pyglet.text.Label('Press S for start and sing the notes', font_name="Times New Roman",
@@ -186,25 +196,26 @@ class UI:
     def update_score(self):
         self.score += self.score_points
         self.score_label.text = f"Score: {self.score}"
+
+    def restart(self):
+        self.score = 0
           
     def draw_ui(self):
         self.score_label.draw()
         self.feeback.draw()
 
     def draw_good_feedback(self):
-        self.feeback.text = 'Nice dude'
-        #self.feeback.draw()
+        self.feeback.text = 'Nice!'
 
     def draw_bad_feedback(self):
         self.feeback.text = 'oooouuuch....'
-        #self.feeback.draw()
     
     def draw_end_menu(self):
-        if self.score >= 1300:
+        if self.score >= 1300: # are you celine dion?
             self.final_feedback_label.text = 'Wonderful <3'
-        elif self.score < 1300 and self.score >= 500:
+        elif self.score < 1300 and self.score >= 500: # some notes were hit
             self.final_feedback_label.text = 'That\'s okay'
-        else:
+        else: # motivation
             self.final_feedback_label.text = 'Uff, let\'s not talk about it'
         self.final_score_label.text = f"Final Score: {self.score}"
         self.final_score_label.draw()
@@ -224,11 +235,11 @@ class UI:
         for border in self.borders:
             border.draw()
 
-inputmanager = InputManager()
+inputmanager = InputManager() # mic input stuff
 window = pyglet.window.Window(WINDOW_WIDTH,WINDOW_HEIGHT)
 background = pyglet.image.load(BACKGROUND_IMAGE_PATH)
-player = Player()
-notemanager = NoteManager(midi)
+player = Player() 
+notemanager = NoteManager(midi) # midi stuff
 ui = UI()
 
 def check_collisions():
@@ -240,9 +251,13 @@ def check_collisions():
         ui.draw_bad_feedback()
 
 @window.event
-def on_key_press(symbol, modifier):         
-    if symbol == pyglet.window.key.ESCAPE:
+def on_key_press(symbol, modifier):
+    if notemanager.game_finished:       
+        if symbol == pyglet.window.key.ESCAPE:
             sys.exit(0)
+        elif symbol == pyglet.window.key.R:
+            notemanager.restart()
+            ui.restart()
 
 @window.event
 def on_show():
