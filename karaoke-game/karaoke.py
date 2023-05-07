@@ -32,15 +32,6 @@ class NoteManager:
         self.current_time = 0
         self.game_finished = False
         self.current_time_midi = 0 # for counting midi time
-
-    # resets all variables
-    def restart(self):
-        self.note_blocks.clear()
-        self.notes_midi.clear()
-        self.current_time = 0
-        self.current_time_midi = 0
-        self.game_finished = False
-        self.start_midi()
         
     def start_midi(self):
         # mido documentation
@@ -180,7 +171,7 @@ class UI:
         self.final_feedback_label = pyglet.text.Label('', font_name="Times New Roman",
                                        font_size= 20, x= WINDOW_WIDTH / 2, y=WINDOW_HEIGHT / 2,
                                        anchor_x='center',color=self.color)
-        self.final_menu_label = pyglet.text.Label('ESCAPE for exit, R for restart', font_name="Times New Roman",
+        self.final_menu_label = pyglet.text.Label('ESCAPE for exit', font_name="Times New Roman",
                                        font_size= 15, x= WINDOW_WIDTH / 2, y=WINDOW_HEIGHT / 2 - 100,
                                        anchor_x='center',color=self.color)
         self.start_menu_label = pyglet.text.Label('Press S for start and sing the notes', font_name="Times New Roman",
@@ -196,9 +187,6 @@ class UI:
     def update_score(self):
         self.score += self.score_points
         self.score_label.text = f"Score: {self.score}"
-
-    def restart(self):
-        self.score = 0
           
     def draw_ui(self):
         self.score_label.draw()
@@ -252,12 +240,8 @@ def check_collisions():
 
 @window.event
 def on_key_press(symbol, modifier):
-    if notemanager.game_finished:       
-        if symbol == pyglet.window.key.ESCAPE:
-            sys.exit(0)
-        elif symbol == pyglet.window.key.R:
-            notemanager.restart()
-            ui.restart()
+    if symbol == pyglet.window.key.ESCAPE:
+        sys.exit(0)
 
 @window.event
 def on_show():
